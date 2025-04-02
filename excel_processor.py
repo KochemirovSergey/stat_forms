@@ -32,7 +32,6 @@ def process_excel_file(file_path: str) -> Union[pd.DataFrame, None]:
                 break
                 
         if target_row == -1:
-            print(f"В файле {file_path} не найдена строка с 'Наименование' или 'Профили'")
             return None
             
         # Удаляем все строки выше
@@ -46,7 +45,6 @@ def process_excel_file(file_path: str) -> Union[pd.DataFrame, None]:
                 break
                 
         if number_col == -1:
-            print(f"В файле {file_path} не найдена колонка '№ строки'")
             return None
             
         # Оставляем только первую колонку и колонки начиная с "№ строки"
@@ -69,7 +67,7 @@ def process_excel_file(file_path: str) -> Union[pd.DataFrame, None]:
                 break
         
         # Создаем новый DataFrame с нужными колонками и числовыми названиями
-        df = pd.DataFrame()
+        df = pd.DataFrame(columns=range(len(remaining_cols.columns) + 1), dtype=object)
         df[0] = first_col
         for i in range(remaining_cols.shape[1]):
             df[i + 1] = remaining_cols.iloc[:, i]
@@ -89,21 +87,21 @@ def process_excel_file(file_path: str) -> Union[pd.DataFrame, None]:
             df = pd.concat([row_to_move, df_without_row], ignore_index=True)
         
         # Добавляем 5 пустых строк в начало таблицы
-        empty_rows = pd.DataFrame([[None] * len(df.columns)] * 5, columns=df.columns)
+        empty_rows = pd.DataFrame([[None] * len(df.columns)] * 5, columns=df.columns, dtype=object)
         df = pd.concat([empty_rows, df], ignore_index=True)
         
         # Объединяем строки заголовков
         df = merge_header_rows(df)
         
-        # Меняем местами значения в первой строке между первой и второй колонкой
-        temp = df.iloc[0, 0]
-        df.iloc[0, 0] = df.iloc[0, 1]
-        df.iloc[0, 1] = temp
+        # Меняем местами значения "1" и "2" в строке после пустых строк (индекс 5)
+        if str(df.iloc[5, 0]).strip() == "2" and str(df.iloc[5, 1]).strip() == "1":
+            temp = df.iloc[5, 0]
+            df.iloc[5, 0] = df.iloc[5, 1]
+            df.iloc[5, 1] = temp
         
         return df
         
     except Exception as e:
-        print(f"Ошибка при обработке файла {file_path}: {str(e)}")
         return None
 
 def merge_header_rows(df: pd.DataFrame) -> pd.DataFrame:
@@ -129,12 +127,12 @@ def merge_header_rows(df: pd.DataFrame) -> pd.DataFrame:
     header_rows = df.iloc[num_row_indices[0]:num_row_indices[-1]+1]
     
     # Создаем новую строку с объединенными значениями
-    merged_row = header_rows.iloc[0].copy()
+    merged_row = pd.Series(index=df.columns, dtype=object)
     
     # Для каждой колонки объединяем уникальные значения
-    for col in range(len(df.columns)):
+    for col in df.columns:
         # Получаем все непустые значения из колонки
-        values = [str(val).strip() for val in header_rows.iloc[:, col] 
+        values = [str(val).strip() for val in header_rows[col] 
                  if pd.notna(val) and str(val).strip()]
         # Оставляем только уникальные значения, сохраняя порядок
         unique_values = []
@@ -144,20 +142,21 @@ def merge_header_rows(df: pd.DataFrame) -> pd.DataFrame:
         # Объединяем значения через пробел
         merged_row[col] = ' '.join(unique_values) if unique_values else ''
     
-    # Заменяем строки заголовков на объединенную строку
-    df_before = df.iloc[:num_row_indices[0]]
-    df_after = df.iloc[num_row_indices[-1]+1:]
+    # Создаем новый DataFrame с одной строкой
+    merged_df = pd.DataFrame([merged_row], dtype=object)
     
     # Собираем финальный DataFrame
-    return pd.concat([
-        df_before,
-        pd.DataFrame([merged_row], columns=df.columns),
-        df_after
+    result = pd.concat([
+        df.iloc[:num_row_indices[0]],
+        merged_df,
+        df.iloc[num_row_indices[-1]+1:]
     ], ignore_index=True)
+    
+    return result
 
 def process_directory(directory_path: str) -> None:
     """
-    Обрабатывает все Excel файлы в указанной директории и сохраняет их в той же директории
+    Обрабатывает все Excel файлы в указанной директории и сохраняет их в формате CSV
     
     Args:
         directory_path: путь к директории с Excel файлами
@@ -169,20 +168,27 @@ def process_directory(directory_path: str) -> None:
     for file in excel_files:
         file_path = os.path.join(directory_path, file)
         
-        # Создаем временную копию файла
-        temp_path = os.path.join(directory_path, f"temp_{file}")
+        # Создаем имя для CSV файла
+        csv_file = os.path.splitext(file)[0] + '.csv'
+        temp_path = os.path.join(directory_path, f"temp_{csv_file}")
+        csv_path = os.path.join(directory_path, csv_file)
         
         df = process_excel_file(file_path)
         if df is not None:
-            # Сохраняем во временный файл
-            df.to_excel(temp_path, index=False, header=False)
+            # Сохраняем во временный CSV файл
+            df.to_csv(temp_path, index=False, header=False, encoding='utf-8-sig', sep=';')
             
-            # Удаляем оригинальный файл и переименовываем временный
+            # Если CSV файл уже существует, удаляем его
+            if os.path.exists(csv_path):
+                os.remove(csv_path)
+            
+            # Переименовываем временный файл
+            os.rename(temp_path, csv_path)
+            
+            # Удаляем исходный Excel файл
             os.remove(file_path)
-            os.rename(temp_path, file_path)
-            print(f"Файл {file} успешно обработан")
 
 if __name__ == "__main__":
     # Пример использования с указанной директорией
-    input_dir = "/Users/sergejkocemirov/stat_forms/БД/2024"
+    input_dir = "/Users/sergejkocemirov/stat_forms/Таблицы_исходники/2024"
     process_directory(input_dir) 
