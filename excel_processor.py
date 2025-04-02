@@ -88,20 +88,72 @@ def process_excel_file(file_path: str) -> Union[pd.DataFrame, None]:
             df_without_row = df.drop(target_row_idx)
             df = pd.concat([row_to_move, df_without_row], ignore_index=True)
         
+        # Добавляем 5 пустых строк в начало таблицы
+        empty_rows = pd.DataFrame([[None] * len(df.columns)] * 5, columns=df.columns)
+        df = pd.concat([empty_rows, df], ignore_index=True)
+        
+        # Объединяем строки заголовков
+        df = merge_header_rows(df)
+        
         # Меняем местами значения в первой строке между первой и второй колонкой
         temp = df.iloc[0, 0]
         df.iloc[0, 0] = df.iloc[0, 1]
         df.iloc[0, 1] = temp
-        
-        # Добавляем 5 пустых строк в начало таблицы
-        empty_rows = pd.DataFrame([[None] * len(df.columns)] * 5, columns=df.columns)
-        df = pd.concat([empty_rows, df], ignore_index=True)
         
         return df
         
     except Exception as e:
         print(f"Ошибка при обработке файла {file_path}: {str(e)}")
         return None
+
+def merge_header_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Объединяет строки заголовков между строками с номерами.
+    
+    Args:
+        df: DataFrame с данными
+    
+    Returns:
+        DataFrame с объединенными строками заголовков
+    """
+    # Находим индексы строк с '№ строки'
+    num_row_indices = []
+    for idx, value in enumerate(df.iloc[:, 0]):
+        if isinstance(value, str) and value == '№ строки':
+            num_row_indices.append(idx)
+    
+    if len(num_row_indices) < 2:
+        return df
+    
+    # Получаем строки заголовков между строками с номерами
+    header_rows = df.iloc[num_row_indices[0]:num_row_indices[-1]+1]
+    
+    # Создаем новую строку с объединенными значениями
+    merged_row = header_rows.iloc[0].copy()
+    
+    # Для каждой колонки объединяем уникальные значения
+    for col in range(len(df.columns)):
+        # Получаем все непустые значения из колонки
+        values = [str(val).strip() for val in header_rows.iloc[:, col] 
+                 if pd.notna(val) and str(val).strip()]
+        # Оставляем только уникальные значения, сохраняя порядок
+        unique_values = []
+        for val in values:
+            if val not in unique_values:
+                unique_values.append(val)
+        # Объединяем значения через пробел
+        merged_row[col] = ' '.join(unique_values) if unique_values else ''
+    
+    # Заменяем строки заголовков на объединенную строку
+    df_before = df.iloc[:num_row_indices[0]]
+    df_after = df.iloc[num_row_indices[-1]+1:]
+    
+    # Собираем финальный DataFrame
+    return pd.concat([
+        df_before,
+        pd.DataFrame([merged_row], columns=df.columns),
+        df_after
+    ], ignore_index=True)
 
 def process_directory(directory_path: str) -> None:
     """
@@ -132,5 +184,5 @@ def process_directory(directory_path: str) -> None:
 
 if __name__ == "__main__":
     # Пример использования с указанной директорией
-    input_dir = "/Users/sergejkocemirov/test/2020/все разделы"
+    input_dir = "/Users/sergejkocemirov/stat_forms/БД/2024"
     process_directory(input_dir) 
