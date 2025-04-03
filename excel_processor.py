@@ -190,5 +190,5 @@ def process_directory(directory_path: str) -> None:
 
 if __name__ == "__main__":
     # Пример использования с указанной директорией
-    input_dir = "/Users/sergejkocemirov/stat_forms/Таблицы_исходники/2024"
+    input_dir = "/Users/sergejkocemirov/stat_forms/Таблицы_исходники/2021"
     process_directory(input_dir) 
