@@ -39,7 +39,7 @@ class CellResponse(BaseModel):
 class CellsResponse(BaseModel):
     cells: List[CellResponse] = Field(description="список релевантных ячеек")
 
-def load_tables_from_csv(file_path='/Users/sergejkocemirov/stat_forms/Список_таблиц_20-24.csv'):
+def load_tables_from_csv(file_path='/Users/sergejkocemirov/stat_forms/Список_таблиц_21-24.csv'):
     """Загружает список таблиц из CSV файла."""
     tables = []
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -77,7 +77,7 @@ def ask_llm_for_table(user_query, tables):
         response = chain.invoke({
             "query": user_query,
             "tables": tables_text
-        }, config={"max_tokens": 1000})
+        })
         return response["table_number"]
     except Exception:
         return "НЕТ ПОДХОДЯЩЕЙ ТАБЛИЦЫ"
@@ -107,7 +107,7 @@ def ask_llm_for_cells(user_query, schema):
         response = chain.invoke({
             "query": user_query,
             "schema": schema
-        }, config={"max_tokens": 1000})
+        })
         print("\nОтвет LLM:")
         print(json.dumps(response, ensure_ascii=False, indent=2))
         return json.dumps(response, ensure_ascii=False)
@@ -199,7 +199,9 @@ def process_cell_values(table_number: str, cells_response: str) -> List[Dict]:
         values = get_cell_value_by_table(
             table_number,
             cell_info['column_number'],
-            cell_info['row_number']
+            cell_info['row_number'],
+            "2021",  # начальный год
+            "2024"   # конечный год
         )
         
         cells_data.append({
@@ -229,7 +231,7 @@ def main():
         
     try:
         # Получаем схему таблицы
-        schema = get_table_schema(table_number)
+        schema = get_table_schema(table_number, year="2024")
         
         # Получаем информацию о релевантных ячейках
         cells_response = ask_llm_for_cells(user_query, schema)

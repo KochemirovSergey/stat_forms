@@ -6,12 +6,13 @@ class TableSchemaError(Exception):
     """Пользовательское исключение для ошибок при работе со схемой таблицы"""
     pass
 
-def get_table_schema(table_number: str) -> Dict[str, Dict[str, str]]:
+def get_table_schema(table_number: str, year: str = "2024") -> Dict[str, Dict[str, str]]:
     """
     Получает схему таблицы по её номеру.
     
     Args:
         table_number (str): Номер таблицы (например, "2.5.1")
+        year (str): Год данных (по умолчанию "2024")
         
     Returns:
         Dict[str, Dict[str, str]]: Словарь с двумя ключами:
@@ -23,7 +24,7 @@ def get_table_schema(table_number: str) -> Dict[str, Dict[str, str]]:
     """
     try:
         # Формируем путь к файлу
-        base_dir = os.path.join(os.path.dirname(__file__), 'БД', '2024')
+        base_dir = os.path.join(os.path.dirname(__file__), 'БД', year)
         file_name = f"Раздел {table_number}.csv"
         file_path = os.path.join(base_dir, file_name)
         

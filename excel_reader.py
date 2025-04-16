@@ -5,19 +5,6 @@ from typing import Dict, List, Optional
 
 BASE_DIR = "/Users/sergejkocemirov/stat_forms/БД"
 
-def get_available_years() -> List[str]:
-    """
-    Получает список доступных годов из базовой директории.
-    
-    Returns:
-        List[str]: Список годов в порядке убывания
-    """
-    years = []
-    for item in os.listdir(BASE_DIR):
-        if item.isdigit() and os.path.isdir(os.path.join(BASE_DIR, item)):
-            years.append(item)
-    return sorted(years, reverse=True)
-
 def get_file_path(year: str, table_number: str) -> str:
     """
     Формирует путь к файлу для конкретного года и номера таблицы.
@@ -70,20 +57,24 @@ def get_cell_value(file_path: str, column_number: int, row_number: int) -> str:
         return ""
     return str(cell_value)
 
-def get_cell_value_by_table(table_number: str, column_number: int, row_number: int) -> Dict[str, str]:
+def get_cell_value_by_table(table_number: str, column_number: int, row_number: int, start_year: str, end_year: str) -> Dict[str, str]:
     """
-    Получает значение ячейки из всех доступных годовых файлов для указанной таблицы.
+    Получает значение ячейки из файлов за указанный период для указанной таблицы.
     
     Args:
         table_number (str): Номер таблицы (например, "2.1.1")
         column_number (int): Номер колонки (начиная с 1)
         row_number (int): Номер строки (начиная с 1)
+        start_year (str): Начальный год (например, "2021")
+        end_year (str): Конечный год (например, "2024")
     
     Returns:
         Dict[str, str]: Словарь, где ключ - год, значение - содержимое ячейки
     """
     result = {}
-    years = get_available_years()
+    
+    # Генерируем список годов в указанном диапазоне
+    years = [str(year) for year in range(int(start_year), int(end_year) + 1)]
     
     for year in years:
         file_path = get_file_path(year, table_number)
@@ -103,7 +94,7 @@ def get_cell_value_by_table(table_number: str, column_number: int, row_number: i
 if __name__ == "__main__":
     try:
         # Пример использования новой функции
-        result = get_cell_value_by_table("2.5.1", 3, 3)
+        result = get_cell_value_by_table("2.5.1", 3, 3, "2021", "2024")
         print("Результаты по годам:")
         for year, value in result.items():
             print(f"{year}: {value}")
