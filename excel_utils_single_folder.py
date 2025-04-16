@@ -185,7 +185,7 @@ def save_sheets_to_single_folder(excel_path: str):
 
 if __name__ == "__main__":
     # Пример использования
-    file_path = "/Users/sergejkocemirov/stat_forms/Таблицы_исходники/2020.xlsx"
+    file_path = "/Users/sergejkocemirov/stat_forms/Таблицы_исходники/2018.xlsx"
     try:
         save_sheets_to_single_folder(file_path)
         print("Листы успешно сохранены в общую папку")
