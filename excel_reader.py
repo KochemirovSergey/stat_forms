@@ -51,11 +51,16 @@ def get_cell_value(file_path: str, column_number: int, row_number: int) -> str:
     
     # Получаем значение ячейки (column_number - 1, так как в pandas индексация с 0)
     cell_value = df.iloc[actual_row_index, column_number - 1]
+
+    #Удалить последний символ
+    
     
     # Проверяем на NaN и конвертируем в строку
     if pd.isna(cell_value):
         return ""
     return str(cell_value)
+
+
 
 def get_cell_value_by_table(table_number: str, column_number: int, row_number: int, start_year: str, end_year: str) -> Dict[str, str]:
     """

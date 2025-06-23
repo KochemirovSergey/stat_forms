@@ -6,13 +6,13 @@ class TableSchemaError(Exception):
     """Пользовательское исключение для ошибок при работе со схемой таблицы"""
     pass
 
-def get_table_schema(table_number: str, year: str = "2024") -> Dict[str, Dict[str, str]]:
+def get_table_schema(table_number: str, year: str) -> Dict[str, Dict[str, str]]:
     """
     Получает схему таблицы по её номеру.
     
     Args:
         table_number (str): Номер таблицы (например, "2.5.1")
-        year (str): Год данных (по умолчанию "2024")
+        year (str): Год данных
         
     Returns:
         Dict[str, Dict[str, str]]: Словарь с двумя ключами:

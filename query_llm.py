@@ -8,7 +8,7 @@ import csv
 import json
 import sys
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 sys.path.append('/Users/sergejkocemirov/stat_forms')
 from table_schema import get_table_schema
 from excel_reader import get_cell_value_by_table
@@ -180,13 +180,20 @@ def format_terminal_output(table_number: str, table_name: str, cells_data: List[
     
     return "\n".join(output)
 
-def process_cell_values(table_number: str, cells_response: str) -> List[Dict]:
+def process_cell_values(
+    table_number: str, 
+    cells_response: str,
+    start_year: str,
+    end_year: str
+) -> List[Dict]:
     """
     Обрабатывает ответ LLM и получает значения ячеек.
     
     Args:
         table_number (str): Номер таблицы
         cells_response (str): JSON-ответ от LLM с информацией о ячейках
+        start_year (str): Год начала периода
+        end_year (str): Год окончания периода
         
     Returns:
         List[Dict]: Список словарей с данными ячеек
@@ -200,8 +207,8 @@ def process_cell_values(table_number: str, cells_response: str) -> List[Dict]:
             table_number,
             cell_info['column_number'],
             cell_info['row_number'],
-            "2021",  # начальный год
-            "2024"   # конечный год
+            start_year,
+            end_year
         )
         
         cells_data.append({
@@ -212,52 +219,104 @@ def process_cell_values(table_number: str, cells_response: str) -> List[Dict]:
     
     return cells_data
 
-def main():
-    """Основная функция программы."""
-    user_query = input("Введите ваш запрос: ")
+def process_query(
+    tables_csv_path: str,
+    start_year: str,
+    end_year: str,
+    user_query: str
+) -> Dict[str, Any]:
+    """
+    Обрабатывает запрос пользователя и возвращает результаты.
     
-    # Загружаем список таблиц
-    tables = load_tables_from_csv()
-    
-    # Получаем номер подходящей таблицы
-    table_number = ask_llm_for_table(user_query, tables)
-    
-    if table_number == "НЕТ ПОДХОДЯЩЕЙ ТАБЛИЦЫ":
-        print("Этап 1: Поиск таблицы - НЕТ ПОДХОДЯЩЕЙ ТАБЛИЦЫ")
-        return
-    
-    # Находим название таблицы
-    table_name = next((t['name'] for t in tables if t['number'] == table_number), '')
+    Args:
+        tables_csv_path (str): Путь к CSV файлу со списком таблиц
+        start_year (str): Год начала периода
+        end_year (str): Год окончания периода
+        user_query (str): Запрос пользователя
         
+    Returns:
+        Dict[str, Any]: Словарь с результатами обработки запроса
+    """
+    errors = []
+    result = {
+        "success": False,
+        "errors": errors,
+        "data": None
+    }
+    
     try:
+        # Загружаем список таблиц
+        tables = load_tables_from_csv(tables_csv_path)
+        
+        # Получаем номер подходящей таблицы
+        table_number = ask_llm_for_table(user_query, tables)
+        
+        if table_number == "НЕТ ПОДХОДЯЩЕЙ ТАБЛИЦЫ":
+            errors.append("Этап 1: Поиск таблицы - НЕТ ПОДХОДЯЩЕЙ ТАБЛИЦЫ")
+            return result
+        
+        # Находим название таблицы
+        table_name = next((t['name'] for t in tables if t['number'] == table_number), '')
+            
         # Получаем схему таблицы
-        schema = get_table_schema(table_number, year="2024")
+        schema = get_table_schema(table_number, year=end_year)
         
         # Получаем информацию о релевантных ячейках
         cells_response = ask_llm_for_cells(user_query, schema)
         
         if cells_response == "НЕ УДАЛОСЬ НАЙТИ НУЖНЫЕ ЯЧЕЙКИ В ТАБЛИЦЕ":
-            print(f"Этап 1: Поиск таблицы - НАЙДЕНА ТАБЛИЦА {table_number}")
-            print("Этап 2: Поиск ячеек - НЕ УДАЛОСЬ НАЙТИ НУЖНЫЕ ЯЧЕЙКИ В ТАБЛИЦЕ")
-            return
+            errors.append(f"Этап 1: Поиск таблицы - НАЙДЕНА ТАБЛИЦА {table_number}")
+            errors.append("Этап 2: Поиск ячеек - НЕ УДАЛОСЬ НАЙТИ НУЖНЫЕ ЯЧЕЙКИ В ТАБЛИЦЕ")
+            return result
             
-        print(f"Этап 1: Поиск таблицы - НАЙДЕНА ТАБЛИЦА {table_number}")
-        print("Этап 2: Поиск ячеек - НАЙДЕНЫ СЛЕДУЮЩИЕ ЯЧЕЙКИ:")
-        
         # Получаем значения ячеек
-        cells_data = process_cell_values(table_number, cells_response)
-        
-        # Форматируем и выводим результат
-        print("\nРезультаты запроса:")
-        print(format_terminal_output(table_number, table_name, cells_data))
+        cells_data = process_cell_values(table_number, cells_response, start_year, end_year)
         
         # Сохраняем результаты в CSV
         csv_path = save_to_csv(table_number, table_name, cells_data)
-        print(f"\nРезультаты сохранены в файл: {csv_path}")
-            
+        
+        result["success"] = True
+        result["data"] = {
+            "table_number": table_number,
+            "table_name": table_name,
+            "cells_data": cells_data,
+            "csv_path": csv_path
+        }
+        
     except Exception as e:
-        print(f"Этап 1: Поиск таблицы - НАЙДЕНА ТАБЛИЦА {table_number}")
-        print(f"Произошла ошибка: {str(e)}")
+        errors.append(f"Произошла ошибка: {str(e)}")
+    
+    result["errors"] = errors
+    return result
+
+def main():
+    """Основная функция программы."""
+    user_query = input("Введите ваш запрос: ")
+    
+    # Путь к CSV файлу со списком таблиц
+    tables_csv_path = '/Users/sergejkocemirov/stat_forms/Список таблиц_21-24.csv'
+    
+    # Обрабатываем запрос
+    result = process_query(
+        tables_csv_path=tables_csv_path,
+        start_year="2021",
+        end_year="2024",
+        user_query=user_query
+    )
+    
+    # Выводим результаты
+    if result["success"]:
+        print("\nРезультаты запроса:")
+        print(format_terminal_output(
+            result["data"]["table_number"],
+            result["data"]["table_name"],
+            result["data"]["cells_data"]
+        ))
+        print(f"\nРезультаты сохранены в файл: {result['data']['csv_path']}")
+    else:
+        print("\nОшибки при обработке запроса:")
+        for error in result["errors"]:
+            print(error)
 
 if __name__ == "__main__":
     main()

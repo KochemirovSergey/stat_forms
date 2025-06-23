@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Схема работы модуля query_llm</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .mermaid {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .download-btn {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .download-btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Схема работы модуля query_llm</h1>
+        
+        <div class="mermaid">
+graph TD
+    A[Пользователь вводит запрос] --> B[main]
+    B --> C[process_query]
+    
+    C --> D[load_tables_from_csv]
+    D --> E[Загрузка списка таблиц из CSV]
+    E --> F[ask_llm_for_table]
+    
+    F --> G{LLM анализирует запрос}
+    G -->|Найдена подходящая таблица| H[Получен номер таблицы]
+    G -->|Таблица не найдена| I[Возврат ошибки: НЕТ ПОДХОДЯЩЕЙ ТАБЛИЦЫ]
+    
+    H --> J[get_table_schema]
+    J --> K[Чтение схемы таблицы из БД]
+    K --> L[ask_llm_for_cells]
+    
+    L --> M{LLM определяет релевантные ячейки}
+    M -->|Ячейки найдены| N[Получен JSON с координатами ячеек]
+    M -->|Ячейки не найдены| O[Возврат ошибки: НЕ УДАЛОСЬ НАЙТИ ЯЧЕЙКИ]
+    
+    N --> P[process_cell_values]
+    P --> Q[get_cell_value_by_table]
+    Q --> R[Цикл по годам 2021-2024]
+    R --> S[get_cell_value для каждого года]
+    S --> T[Чтение значений из CSV файлов]
+    
+    T --> U[Сбор данных по всем ячейкам и годам]
+    U --> V[save_to_csv]
+    V --> W[Сохранение результатов в query_log]
+    W --> X[format_terminal_output]
+    X --> Y[Вывод результатов пользователю]
+    
+    I --> Z[Вывод ошибки]
+    O --> Z
+    
+    subgraph LLM["Компоненты LLM"]
+        AA[ChatOpenAI GPT-4o]
+        BB[JsonOutputParser]
+        CC[PromptTemplate]
+    end
+    
+    subgraph Data["Структуры данных"]
+        DD[TableResponse]
+        EE[CellResponse]
+        FF[CellsResponse]
+    end
+    
+    subgraph Files["Файловая система"]
+        GG[Список_таблиц_21-24.csv]
+        HH[БД/год/Раздел номер.csv]
+        II[query_log/query_result_timestamp.csv]
+    end
+    
+    F -.-> AA
+    L -.-> AA
+    D -.-> GG
+    J -.-> HH
+    V -.-> II
+    
+    style A fill:#e1f5fe
+    style Y fill:#c8e6c9
+    style Z fill:#ffcdd2
+    style AA fill:#fff3e0
+        </div>
+        
+        <button class="download-btn" onclick="downloadSVG()">Скачать как SVG</button>
+        <button class="download-btn" onclick="downloadPNG()">Скачать как PNG</button>
+    </div>
+
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true
+            }
+        });
+
+        function downloadSVG() {
+            const svg = document.querySelector('.mermaid svg');
+            if (svg) {
+                const svgData = new XMLSerializer().serializeToString(svg);
+                const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+                const svgUrl = URL.createObjectURL(svgBlob);
+                const downloadLink = document.createElement('a');
+                downloadLink.href = svgUrl;
+                downloadLink.download = 'query_llm_schema.svg';
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+            }
+        }
+
+        function downloadPNG() {
+            const svg = document.querySelector('.mermaid svg');
+            if (svg) {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const img = new Image();
+                
+                const svgData = new XMLSerializer().serializeToString(svg);
+                const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+                const url = URL.createObjectURL(svgBlob);
+                
+                img.onload = function() {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0);
+                    
+                    canvas.toBlob(function(blob) {
+                        const pngUrl = URL.createObjectURL(blob);
+                        const downloadLink = document.createElement('a');
+                        downloadLink.href = pngUrl;
+                        downloadLink.download = 'query_llm_schema.png';
+                        document.body.appendChild(downloadLink);
+                        downloadLink.click();
+                        document.body.removeChild(downloadLink);
+                    });
+                };
+                
+                img.src = url;
+            }
+        }
+    </script>
+</body>
+</html>
