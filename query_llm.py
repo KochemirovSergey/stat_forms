@@ -39,6 +39,12 @@ class CellResponse(BaseModel):
 class CellsResponse(BaseModel):
     cells: List[CellResponse] = Field(description="список релевантных ячеек")
 
+class CombinedAnalysisResponse(BaseModel):
+    result_type: str = Field(description="тип результата: both_periods, period_2016_2020, period_2021_2024, not_found")
+    cell_info: Dict[str, Any] = Field(description="информация о ячейках с полями final_selection и all_sources")
+    values_by_year: Dict[str, str] = Field(description="значения по годам в формате {год: значение}")
+    analysis_notes: str = Field(description="объяснение принятого решения")
+
 def load_tables_from_csv(file_path='/Users/sergejkocemirov/stat_forms/Список_таблиц_21-24.csv'):
     """Загружает список таблиц из CSV файла."""
     tables = []
@@ -115,46 +121,104 @@ def ask_llm_for_cells(user_query, schema):
         print(f"\nОшибка при получении ответа от LLM: {str(e)}")
         return "НЕ УДАЛОСЬ НАЙТИ НУЖНЫЕ ЯЧЕЙКИ В ТАБЛИЦЕ"
 
-def save_to_csv(table_number: str, table_name: str, cells_data: List[Dict]) -> str:
+def analyze_combined_results(
+    user_query: str,
+    result_2124: Dict[str, Any],
+    result_1620: Dict[str, Any]
+) -> Dict[str, Any]:
     """
-    Сохраняет результаты запроса в CSV файл.
+    Анализирует и объединяет результаты из двух периодов с помощью LLM.
     
     Args:
-        table_number (str): Номер таблицы
-        table_name (str): Название таблицы
-        cells_data (List[Dict]): Список словарей с данными ячеек
+        user_query (str): Исходный запрос пользователя
+        result_2124 (Dict[str, Any]): Результат обработки периода 2021-2024
+        result_1620 (Dict[str, Any]): Результат обработки периода 2016-2020
         
     Returns:
-        str: Путь к созданному файлу
+        Dict[str, Any]: Результат анализа LLM
     """
-    # Создаем директорию для логов, если её нет
-    log_dir = "/Users/sergejkocemirov/stat_forms/query_log"
-    os.makedirs(log_dir, exist_ok=True)
+    # Настройка парсера
+    parser = JsonOutputParser(pydantic_object=CombinedAnalysisResponse)
     
-    # Формируем имя файла с timestamp
-    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    file_name = f"query_result_{timestamp}.csv"
-    file_path = os.path.join(log_dir, file_name)
+    # Подготовка данных для промпта
+    period_2124_info = "НЕТ ДАННЫХ"
+    period_1620_info = "НЕТ ДАННЫХ"
     
-    # Записываем данные в CSV
-    with open(file_path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f, delimiter=';')
-        # Записываем заголовки
-        writer.writerow(['Таблица', 'Название таблицы', 'Название колонки', 'Название строки', 'Год', 'Значение'])
+    if result_2124["success"]:
+        data_2124 = result_2124["data"]
+        cells_info_2124 = []
+        for cell in data_2124["cells_data"]:
+            cells_info_2124.append(f"Колонка: {cell['column_name']}, Строка: {cell['row_name']}, Значения: {cell['values']}")
         
-        # Записываем данные
-        for cell_data in cells_data:
-            for year, value in cell_data['values'].items():
-                writer.writerow([
-                    table_number,
-                    table_name,
-                    cell_data['column_name'],
-                    cell_data['row_name'],
-                    year,
-                    value
-                ])
+        period_2124_info = f"""
+Таблица: {data_2124['table_number']} - {data_2124['table_name']}
+Найденные ячейки:
+{chr(10).join(cells_info_2124)}"""
+    else:
+        period_2124_info = f"ОШИБКИ: {'; '.join(result_2124['errors'])}"
     
-    return file_path
+    if result_1620["success"]:
+        data_1620 = result_1620["data"]
+        cells_info_1620 = []
+        for cell in data_1620["cells_data"]:
+            cells_info_1620.append(f"Колонка: {cell['column_name']}, Строка: {cell['row_name']}, Значения: {cell['values']}")
+        
+        period_1620_info = f"""
+Таблица: {data_1620['table_number']} - {data_1620['table_name']}
+Найденные ячейки:
+{chr(10).join(cells_info_1620)}"""
+    else:
+        period_1620_info = f"ОШИБКИ: {'; '.join(result_1620['errors'])}"
+    
+    prompt = PromptTemplate(
+        template="""Проанализируй результаты поиска данных за два периода и прими решение о том, как лучше ответить на запрос пользователя.
+
+{format_instructions}
+
+Запрос пользователя: {query}
+
+Результаты за период 2021-2024:
+{period_2124}
+
+Результаты за период 2016-2020:
+{period_1620}
+
+Твоя задача:
+1. Оценить релевантность данных из каждого периода
+2. Принять одно из решений:
+   - "both_periods": если данные из обоих периодов одинаковые/совместимые - объедини их в одну серию 2016-2024
+   - "period_2021_2024": если релевантны только данные 2021-2024
+   - "period_2016_2020": если релевантны только данные 2016-2020
+   - "not_found": если все данные нерелевантны или есть критические ошибки
+
+3. Если найдено несколько ячеек, выбери одну наиболее подходящую для ответа
+4. В cell_info.final_selection укажи выбранные ячейки, в cell_info.all_sources - все исходные данные
+5. В values_by_year верни только итоговые значения для выбранного периода
+6. В analysis_notes объясни свое решение""",
+        input_variables=["query", "period_2124", "period_1620"],
+        partial_variables={"format_instructions": parser.get_format_instructions()}
+    )
+    
+    chain = prompt | llm | parser
+    
+    try:
+        response = chain.invoke({
+            "query": user_query,
+            "period_2124": period_2124_info,
+            "period_1620": period_1620_info
+        })
+        print("\nОтвет LLM анализа:")
+        print(json.dumps(response, ensure_ascii=False, indent=2))
+        return response
+    except Exception as e:
+        print(f"\nОшибка при анализе объединенных результатов: {str(e)}")
+        return {
+            "result_type": "not_found",
+            "cell_info": {"final_selection": [], "all_sources": []},
+            "values_by_year": {},
+            "analysis_notes": f"Ошибка анализа: {str(e)}"
+        }
+
 
 def format_terminal_output(table_number: str, table_name: str, cells_data: List[Dict]) -> str:
     """
@@ -177,6 +241,59 @@ def format_terminal_output(table_number: str, table_name: str, cells_data: List[
         for year, value in cell_data['values'].items():
             output.append(f"{year}: {value}")
         output.append("")  # Пустая строка между ячейками
+    
+    return "\n".join(output)
+
+def format_combined_analysis_output(analysis_result: Dict[str, Any]) -> str:
+    """
+    Форматирует результат итогового анализа для вывода в терминал.
+    
+    Args:
+        analysis_result (Dict[str, Any]): Результат анализа LLM
+        
+    Returns:
+        str: Отформатированный текст для вывода
+    """
+    output = ["\n" + "="*60]
+    output.append("ИТОГОВЫЙ АНАЛИЗ")
+    output.append("="*60)
+    
+    result_type = analysis_result.get("result_type", "not_found")
+    
+    # Определяем описание типа результата
+    type_descriptions = {
+        "both_periods": "Данные объединены из обоих периодов (2016-2024)",
+        "period_2021_2024": "Релевантны данные только за период 2021-2024",
+        "period_2016_2020": "Релевантны данные только за период 2016-2020",
+        "not_found": "Подходящие данные не найдены"
+    }
+    
+    output.append(f"Результат: {type_descriptions.get(result_type, result_type)}")
+    
+    # Информация о выбранных ячейках
+    cell_info = analysis_result.get("cell_info", {})
+    final_selection = cell_info.get("final_selection", [])
+    
+    if final_selection:
+        output.append("\nВыбранные данные:")
+        for cell in final_selection:
+            if isinstance(cell, dict):
+                column = cell.get("column_name", "Неизвестно")
+                row = cell.get("row_name", "Неизвестно")
+                output.append(f"  Колонка: {column}")
+                output.append(f"  Строка: {row}")
+    
+    # Значения по годам
+    values_by_year = analysis_result.get("values_by_year", {})
+    if values_by_year:
+        output.append("\nЗначения по годам:")
+        for year in sorted(values_by_year.keys()):
+            output.append(f"  {year}: {values_by_year[year]}")
+    
+    # Обоснование
+    analysis_notes = analysis_result.get("analysis_notes", "")
+    if analysis_notes:
+        output.append(f"\nОбоснование: {analysis_notes}")
     
     return "\n".join(output)
 
@@ -272,15 +389,11 @@ def process_query(
         # Получаем значения ячеек
         cells_data = process_cell_values(table_number, cells_response, start_year, end_year)
         
-        # Сохраняем результаты в CSV
-        csv_path = save_to_csv(table_number, table_name, cells_data)
-        
         result["success"] = True
         result["data"] = {
             "table_number": table_number,
             "table_name": table_name,
-            "cells_data": cells_data,
-            "csv_path": csv_path
+            "cells_data": cells_data
         }
         
     except Exception as e:
@@ -293,30 +406,65 @@ def main():
     """Основная функция программы."""
     user_query = input("Введите ваш запрос: ")
     
-    # Путь к CSV файлу со списком таблиц
-    tables_csv_path = '/Users/sergejkocemirov/stat_forms/Список таблиц_21-24.csv'
+    # Запрос для периода 2021-2024
+    print("\n" + "="*60)
+    print("ПЕРИОД 2021-2024")
+    print("="*60)
     
-    # Обрабатываем запрос
-    result = process_query(
-        tables_csv_path=tables_csv_path,
+    tables_csv_path_2124 = '/Users/sergejkocemirov/stat_forms/Список таблиц_21-24.csv'
+    result_2124 = process_query(
+        tables_csv_path=tables_csv_path_2124,
         start_year="2021",
         end_year="2024",
         user_query=user_query
     )
     
-    # Выводим результаты
-    if result["success"]:
-        print("\nРезультаты запроса:")
+    # Выводим результаты для периода 2021-2024
+    if result_2124["success"]:
+        print("\nРезультаты запроса для периода 2021-2024:")
         print(format_terminal_output(
-            result["data"]["table_number"],
-            result["data"]["table_name"],
-            result["data"]["cells_data"]
+            result_2124["data"]["table_number"],
+            result_2124["data"]["table_name"],
+            result_2124["data"]["cells_data"]
         ))
-        print(f"\nРезультаты сохранены в файл: {result['data']['csv_path']}")
     else:
-        print("\nОшибки при обработке запроса:")
-        for error in result["errors"]:
+        print("\nОшибки при обработке запроса для периода 2021-2024:")
+        for error in result_2124["errors"]:
             print(error)
+    
+    # Запрос для периода 2016-2020
+    print("\n" + "="*60)
+    print("ПЕРИОД 2016-2020")
+    print("="*60)
+    
+    tables_csv_path_1620 = '/Users/sergejkocemirov/stat_forms/Список таблиц_16-20.csv'
+    result_1620 = process_query(
+        tables_csv_path=tables_csv_path_1620,
+        start_year="2016",
+        end_year="2020",
+        user_query=user_query
+    )
+    
+    # Выводим результаты для периода 2016-2020
+    if result_1620["success"]:
+        print("\nРезультаты запроса для периода 2016-2020:")
+        print(format_terminal_output(
+            result_1620["data"]["table_number"],
+            result_1620["data"]["table_name"],
+            result_1620["data"]["cells_data"]
+        ))
+    else:
+        print("\nОшибки при обработке запроса для периода 2016-2020:")
+        for error in result_1620["errors"]:
+            print(error)
+    
+    # Итоговый анализ объединенных результатов
+    print("\n" + "="*60)
+    print("АНАЛИЗ ОБЪЕДИНЕННЫХ РЕЗУЛЬТАТОВ")
+    print("="*60)
+    
+    combined_analysis = analyze_combined_results(user_query, result_2124, result_1620)
+    print(format_combined_analysis_output(combined_analysis))
 
 if __name__ == "__main__":
     main()
