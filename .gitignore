@@ -7,3 +7,12 @@ __pycache__
 *.pyw
 *.pyz
 excel_processor.py
+
+# Telegram bot files
+.env
+bot.log
+*.log
+
+# IDE files
+.vscode/
+.idea/

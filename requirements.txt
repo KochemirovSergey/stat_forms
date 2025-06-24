@@ -1,3 +1,6 @@
 pandas==2.2.3
 openpyxl==3.1.5
-numpy==2.2.4tabulate
+numpy==2.2.4
+tabulate
+aiogram==3.13.1
+python-dotenv==1.0.0
