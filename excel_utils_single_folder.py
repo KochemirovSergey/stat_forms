@@ -185,9 +185,12 @@ def save_sheets_to_single_folder(excel_path: str):
 
 if __name__ == "__main__":
     # Пример использования
-    file_path = "/Users/sergejkocemirov/stat_forms/Таблицы_исходники/2016.xlsx"
+    import os
+    from pathlib import Path
+    PROJECT_ROOT = Path(__file__).parent.absolute()
+    file_path = os.path.join(PROJECT_ROOT, "Таблицы_исходники", "2016.xlsx")
     try:
         save_sheets_to_single_folder(file_path)
         print("Листы успешно сохранены в общую папку")
     except Exception as e:
-        print(f"Ошибка: {str(e)}") 
+        print(f"Ошибка: {str(e)}")

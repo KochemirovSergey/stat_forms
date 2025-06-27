@@ -2,17 +2,21 @@
 Конфигурация для Telegram бота
 """
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Загружаем переменные окружения из .env файла
 load_dotenv()
 
+# Получаем абсолютный путь к директории проекта
+PROJECT_ROOT = Path(__file__).parent.absolute()
+
 # Токен бота
 BOT_TOKEN = os.getenv('BOT_TOKEN', '7708446796:AAElZ02DTPWQhkUq7JLUQ_NNj17WNjUudAw')
 
-# Пути к файлам с таблицами
-TABLES_CSV_PATH_2124 = '/Users/sergejkocemirov/stat_forms/Список таблиц_21-24.csv'
-TABLES_CSV_PATH_1620 = '/Users/sergejkocemirov/stat_forms/Список таблиц_16-20.csv'
+# Пути к файлам с таблицами (относительные)
+TABLES_CSV_PATH_2124 = os.path.join(PROJECT_ROOT, 'Список таблиц_21-24.csv')
+TABLES_CSV_PATH_1620 = os.path.join(PROJECT_ROOT, 'Список таблиц_16-20.csv')
 
 # Настройки периодов
 PERIOD_2124 = {
@@ -54,9 +58,9 @@ MESSAGES = {
 • Период 2021-2024
 
 ⚡ Примеры запросов:
-• "Показать данные по промышленности"
-• "Статистика населения по годам"
-• "Экономические показатели региона"
+• "Количество классов по физико-математическому профилю"
+• "Численность преподавателей имеющих степень докутора наук"
+• "Общая численность обучающихся"
 
 ❓ Если данные не найдены, попробуйте переформулировать запрос.
 """,

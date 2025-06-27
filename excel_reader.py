@@ -1,9 +1,12 @@
 import pandas as pd
 import numpy as np
 import os
+from pathlib import Path
 from typing import Dict, List, Optional
 
-BASE_DIR = "/Users/sergejkocemirov/stat_forms/БД"
+# Получаем путь к директории проекта
+PROJECT_ROOT = Path(__file__).parent.absolute()
+BASE_DIR = os.path.join(PROJECT_ROOT, "БД")
 
 def get_file_path(year: str, table_number: str) -> str:
     """

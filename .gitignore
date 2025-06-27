@@ -1,5 +1,4 @@
 Таблицы_исходники
-БД
 __pycache__
 *.pyc
 *.pyo
@@ -7,6 +6,7 @@ __pycache__
 *.pyw
 *.pyz
 excel_processor.py
+/venv
 
 # Telegram bot files
 .env

@@ -8,8 +8,13 @@ import csv
 import json
 import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Any
-sys.path.append('/Users/sergejkocemirov/stat_forms')
+
+# Получаем путь к директории проекта
+PROJECT_ROOT = Path(__file__).parent.absolute()
+sys.path.append(str(PROJECT_ROOT))
+
 from table_schema import get_table_schema
 from excel_reader import get_cell_value_by_table
 
@@ -45,7 +50,10 @@ class CombinedAnalysisResponse(BaseModel):
     values_by_year: Dict[str, str] = Field(description="значения по годам в формате {год: значение}")
     analysis_notes: str = Field(description="объяснение принятого решения")
 
-def load_tables_from_csv(file_path='/Users/sergejkocemirov/stat_forms/Список_таблиц_21-24.csv'):
+def load_tables_from_csv(file_path=None):
+    """Загружает список таблиц из CSV файла."""
+    if file_path is None:
+        file_path = os.path.join(PROJECT_ROOT, 'Список таблиц_21-24.csv')
     """Загружает список таблиц из CSV файла."""
     tables = []
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -411,7 +419,7 @@ def main():
     print("ПЕРИОД 2021-2024")
     print("="*60)
     
-    tables_csv_path_2124 = '/Users/sergejkocemirov/stat_forms/Список таблиц_21-24.csv'
+    tables_csv_path_2124 = os.path.join(PROJECT_ROOT, 'Список таблиц_21-24.csv')
     result_2124 = process_query(
         tables_csv_path=tables_csv_path_2124,
         start_year="2021",
@@ -437,7 +445,7 @@ def main():
     print("ПЕРИОД 2016-2020")
     print("="*60)
     
-    tables_csv_path_1620 = '/Users/sergejkocemirov/stat_forms/Список таблиц_16-20.csv'
+    tables_csv_path_1620 = os.path.join(PROJECT_ROOT, 'Список таблиц_16-20.csv')
     result_1620 = process_query(
         tables_csv_path=tables_csv_path_1620,
         start_year="2016",
