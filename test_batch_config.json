@@ -1,0 +1,18 @@
+{
+  "nodes": [
+    {
+      "node_name": "Тест_узел_1",
+      "node_label": "TestBatch",
+      "table_number": "2.1.1",
+      "column": 3,
+      "row": 5
+    },
+    {
+      "node_name": "Тест_узел_2",
+      "node_label": "TestBatch",
+      "table_number": "2.1.1",
+      "column": 4,
+      "row": 5
+    }
+  ]
+}

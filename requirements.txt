@@ -10,4 +10,6 @@ plotly
 pyarrow
 fuzzywuzzy
 python-Levenshtein
+Flask==3.0.0
+neo4j==5.15.0
 

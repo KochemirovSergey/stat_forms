@@ -7,6 +7,8 @@ __pycache__
 *.pyz
 excel_processor.py
 /venv
+/БД
+БД
 
 # Telegram bot files
 .env
@@ -16,3 +18,5 @@ bot.log
 # IDE files
 .vscode/
 .idea/
+БД/
+

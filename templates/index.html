@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Визуализация региональных данных</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Боковая панель с формой -->
+            <div class="col-md-3 sidebar">
+                <div class="sidebar-content">
+                    <h2 class="text-center mb-4">
+                        <i class="fas fa-map-marked-alt"></i>
+                        Региональные данные
+                    </h2>
+                    
+                    <form id="mapForm" class="needs-validation" novalidate>
+                        <div class="mb-3">
+                            <label for="tableNumber" class="form-label">
+                                <i class="fas fa-table"></i>
+                                Номер таблицы
+                            </label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="tableNumber" 
+                                   name="table_number" 
+                                   placeholder="Например: 2.8" 
+                                   required>
+                            <div class="invalid-feedback">
+                                Пожалуйста, введите номер таблицы
+                            </div>
+                            <div class="form-text">
+                                Формат: X.Y или X.Y.Z (например, 2.8 или 2.5.1)
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="columnNumber" class="form-label">
+                                <i class="fas fa-columns"></i>
+                                Номер колонки
+                            </label>
+                            <input type="number" 
+                                   class="form-control" 
+                                   id="columnNumber" 
+                                   name="column_number" 
+                                   min="1" 
+                                   max="100" 
+                                   placeholder="1" 
+                                   required>
+                            <div class="invalid-feedback">
+                                Введите номер колонки (от 1 до 100)
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="rowNumber" class="form-label">
+                                <i class="fas fa-list-ol"></i>
+                                Номер строки
+                            </label>
+                            <input type="number" 
+                                   class="form-control" 
+                                   id="rowNumber" 
+                                   name="row_number" 
+                                   min="1" 
+                                   max="1000" 
+                                   placeholder="1" 
+                                   required>
+                            <div class="invalid-feedback">
+                                Введите номер строки (от 1 до 1000)
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="year" class="form-label">
+                                <i class="fas fa-calendar-alt"></i>
+                                Год
+                            </label>
+                            <div class="year-slider-container">
+                                <div class="year-display" id="yearDisplay">2024</div>
+                                <input type="range"
+                                       class="form-range year-slider"
+                                       id="year"
+                                       name="year"
+                                       min="0"
+                                       max="2"
+                                       value="2"
+                                       step="1"
+                                       disabled>
+                                <div class="year-labels">
+                                    <span>2022</span>
+                                    <span>2023</span>
+                                    <span>2024</span>
+                                </div>
+                            </div>
+                            <div class="form-text">
+                                Слайдер активируется после заполнения всех полей
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-lg w-100" id="generateBtn">
+                            <i class="fas fa-map"></i>
+                            Создать карту
+                        </button>
+                    </form>
+
+                    <!-- Статистика -->
+                    <div id="statsContainer" class="mt-4" style="display: none;">
+                        <h5><i class="fas fa-chart-bar"></i> Статистика</h5>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-label">Всего регионов:</span>
+                                <span class="stat-value" id="totalRegions">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">С данными:</span>
+                                <span class="stat-value" id="regionsWithData">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Обработано:</span>
+                                <span class="stat-value" id="processedRegions">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Основная область с картой -->
+            <div class="col-md-9 main-content">
+                <!-- Индикатор загрузки -->
+                <div id="loadingIndicator" class="loading-container" style="display: none;">
+                    <div class="loading-content">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Загрузка...</span>
+                        </div>
+                        <h4 class="mt-3">Создание карты...</h4>
+                        <p class="text-muted">Обрабатываем данные по регионам</p>
+                    </div>
+                </div>
+
+                <!-- Сообщения об ошибках -->
+                <div id="errorContainer" class="alert alert-danger" style="display: none;">
+                    <h5><i class="fas fa-exclamation-triangle"></i> Ошибка</h5>
+                    <div id="errorMessage"></div>
+                </div>
+
+                <!-- Контейнер для карты -->
+                <div id="mapContainer" class="map-container">
+                    <div class="welcome-message">
+                        <div class="welcome-content">
+                            <i class="fas fa-map-marked-alt fa-5x text-muted mb-4"></i>
+                            <h3>Добро пожаловать!</h3>
+                            <p class="text-muted">
+                                Заполните форму слева и нажмите "Создать карту" для визуализации региональных данных
+                            </p>
+                            <div class="instructions">
+                                <h5>Инструкция:</h5>
+                                <ol class="text-start">
+                                    <li>Введите номер таблицы (например, 2.8)</li>
+                                    <li>Укажите номер колонки и строки</li>
+                                    <li>Выберите год (пока доступен только 2024)</li>
+                                    <li>Нажмите "Создать карту"</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для полноэкранного просмотра -->
+    <div class="modal fade" id="fullscreenModal" tabindex="-1">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Карта в полноэкранном режиме</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div id="fullscreenMapContainer"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
