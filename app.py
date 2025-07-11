@@ -1,149 +1,242 @@
 from flask import Flask, render_template, request, jsonify
-import os
-import sys
-from pathlib import Path
-import traceback
-import logging
-
-# Добавляем текущую директорию в путь для импорта модулей
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from region_visualizer_flask import create_regional_map_json
-
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import json
+from region_visualizer_neo4j import RegionVisualizerNeo4j
+from neo4j import GraphDatabase
+from query_schetnoe_nodes import SchetnoeNodesQuery
 
 app = Flask(__name__)
 
-# Конфигурация
-app.config['SECRET_KEY'] = 'your-secret-key-here'
-app.config['DEBUG'] = True
+# Глобальная переменная для хранения экземпляра визуализатора
+visualizer = None
+
+def get_visualizer():
+    """Получить экземпляр визуализатора с подключением"""
+    global visualizer
+    if visualizer is None:
+        visualizer = RegionVisualizerNeo4j()
+        visualizer.connect()
+    return visualizer
 
 @app.route('/')
 def index():
-    """Главная страница с формой для ввода параметров"""
+    """Главная страница с формой"""
     return render_template('index.html')
 
-@app.route('/api/generate_map', methods=['POST'])
-def generate_map():
-    """API endpoint для генерации карты"""
+@app.route('/visualize', methods=['POST'])
+def visualize():
+    """Построение графиков по ID узла"""
     try:
-        # Получаем данные из запроса
-        data = request.get_json()
+        node_id = request.form.get('node_id', '').strip()
         
-        if not data:
-            return jsonify({
-                'success': False,
-                'error': 'Не получены данные запроса',
-                'html': None
-            }), 400
+        if not node_id:
+            return render_template('index.html', error="Пожалуйста, введите ID узла")
         
-        # Валидация входных параметров
-        table_number = data.get('table_number', '').strip()
-        column_number = data.get('column_number')
-        row_number = data.get('row_number')
-        year = data.get('year', 2024)
+        viz = get_visualizer()
         
-        # Проверка обязательных параметров
-        if not table_number:
-            return jsonify({
-                'success': False,
-                'error': 'Номер таблицы не может быть пустым',
-                'html': None
-            }), 400
+        # Получаем информацию о узле
+        node_info = viz.get_node_info(node_id)
+        if not node_info:
+            return render_template('index.html', error=f"Узел с ID '{node_id}' не найден")
         
-        if not isinstance(column_number, int) or column_number < 1:
-            return jsonify({
-                'success': False,
-                'error': 'Номер колонки должен быть положительным числом',
-                'html': None
-            }), 400
+        # Создаем карту для 2024 года (по умолчанию)
+        map_html = viz.get_regional_map_html(node_id, "2024")
+        if not map_html:
+            return render_template('index.html', error="Не удалось построить карту регионов")
         
-        if not isinstance(row_number, int) or row_number < 1:
-            return jsonify({
-                'success': False,
-                'error': 'Номер строки должен быть положительным числом',
-                'html': None
-            }), 400
+        # Создаем федеральный график
+        chart_html = viz.get_federal_chart_html(node_id)
+        if not chart_html:
+            return render_template('index.html', error="Не удалось построить график федеральных данных")
         
-        logger.info(f"Генерация карты: таблица {table_number}, колонка {column_number}, строка {row_number}, год {year}")
-        
-        # Генерируем карту
-        result = create_regional_map_json(table_number, column_number, row_number, year)
-        
-        if result['success']:
-            return jsonify({
-                'success': True,
-                'graph_json': result['graph_json'],
-                'error': None,
-                'stats': result.get('stats', {})
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': result['error'],
-                'graph_json': None
-            }), 400
-            
+        return render_template('index.html', 
+                             map_html=map_html, 
+                             chart_html=chart_html,
+                             node_id=node_id,
+                             node_info=node_info,
+                             current_year="2024")
+    
     except Exception as e:
-        logger.error(f"Ошибка при генерации карты: {str(e)}")
-        logger.error(traceback.format_exc())
+        error_msg = f"Ошибка при построении графиков: {str(e)}"
+        return render_template('index.html', error=error_msg)
+
+@app.route('/update_map', methods=['POST'])
+def update_map():
+    """AJAX эндпоинт для обновления карты при изменении года"""
+    try:
+        data = request.get_json()
+        node_id = data.get('node_id')
+        year = data.get('year')
+        
+        if not node_id or not year:
+            return jsonify({'error': 'Отсутствуют обязательные параметры'})
+        
+        viz = get_visualizer()
+        map_html = viz.get_regional_map_html(node_id, year)
+        
+        if not map_html:
+            return jsonify({'error': f'Не удалось построить карту для {year} года'})
+        
+        return jsonify({'map_html': map_html})
+    
+    except Exception as e:
+        return jsonify({'error': f'Ошибка при обновлении карты: {str(e)}'})
+
+@app.route('/graph_data', methods=['GET'])
+def get_graph_data():
+    """API endpoint для получения расширенных данных графа узлов 'Счетное' с дополнительными узлами и связями"""
+    query_handler = SchetnoeNodesQuery()
+    
+    try:
+        # Подключаемся к базе данных
+        query_handler.connect()
+        
+        # Получаем расширенные данные
+        extended_data = query_handler.get_extended_schetnoe_data()
+        
+        # Преобразуем данные в формат для vis.js
+        nodes = {}
+        edges = []
+        
+        print("=== DEBUG: Преобразование расширенных данных в формат vis.js ===")
+        
+        # Обрабатываем узлы "Счетное"
+        schetnoe_nodes = extended_data.get('schetnoe_nodes', [])
+        print(f"Получено узлов 'Счетное': {len(schetnoe_nodes)}")
+        
+        for node_data in schetnoe_nodes:
+            node_id = node_data['node_id']
+            node_name = node_data['node_name']
+            node_full_name = node_data['node_full_name']
+            
+            # Добавляем основной узел "Счетное" (серый цвет, меньший размер)
+            if node_id not in nodes:
+                nodes[node_id] = {
+                    'id': node_id,
+                    'label': node_name or 'Без названия',
+                    'title': f"<b>{node_name or 'Без названия'}</b><br>" +
+                            f"Полное название: {node_full_name or 'Не указано'}<br>" +
+                            f"Таблица: {node_data.get('table_number', 'Не указано')}<br>" +
+                            f"Столбец: {node_data.get('column', 'Не указано')}<br>" +
+                            f"Строка: {node_data.get('row', 'Не указано')}<br>" +
+                            f"Годы: {', '.join(map(str, node_data.get('years', []))) if node_data.get('years') else 'Не указано'}<br>" +
+                            f"Метки: Счетное",
+                    'group': 'Счетное',
+                    'color': '#808080',  # Серый цвет
+                    'size': 12  # Меньший размер
+                }
+            
+        
+        # Обрабатываем дополнительные узлы
+        additional_nodes = extended_data.get('additional_nodes', [])
+        print(f"Получено дополнительных узлов: {len(additional_nodes)}")
+        
+        # Получаем динамическую цветовую схему из метаданных
+        metadata = extended_data.get('metadata', {})
+        label_colors = metadata.get('color_mapping', {})
+        
+        print(f"Используется цветовая схема: {label_colors}")
+        
+        for node_data in additional_nodes:
+            node_id = node_data['node_id']
+            node_name = node_data['node_name']
+            node_full_name = node_data['node_full_name']
+            node_labels = node_data['node_labels']
+            
+            if node_id not in nodes:
+                # Определяем группу и цвет на основе первой метки
+                primary_label = node_labels[0] if node_labels else 'Другое'
+                group = primary_label
+                
+                # Используем цвет из динамической схемы или генерируем fallback
+                if label_colors and primary_label in label_colors:
+                    color = label_colors[primary_label]
+                else:
+                    # Fallback цвета для известных меток
+                    fallback_colors = {
+                        'Регион': '#ff6b6b',
+                        'Отрасль': '#4ecdc4',
+                        'Период': '#45b7d1',
+                        'УровеньОбразования': '#96ceb4',
+                        'Класс': '#feca57',
+                        'Работник': '#ff9ff3',
+                        'Обучающийся': '#54a0ff',
+                        'Организация': '#5f27cd',
+                        'Программа': '#00d2d3',
+                        'Специальность': '#ff6348'
+                    }
+                    color = fallback_colors.get(primary_label, '#a8a8a8')
+                
+                nodes[node_id] = {
+                    'id': node_id,
+                    'label': node_name or 'Без названия',
+                    'title': f"<b>{node_name or 'Без названия'}</b><br>" +
+                            f"Полное название: {node_full_name or 'Не указано'}<br>" +
+                            f"Описание: {node_data['node_properties'].get('описание', 'Не указано')}<br>" +
+                            f"Метки: {', '.join(node_labels)}",
+                    'group': group,
+                    'color': color,
+                    'size': 15
+                }
+        
+        # Обрабатываем связи между дополнительными узлами
+        relations_between_additional = extended_data.get('relations_between_additional', [])
+        print(f"Получено связей между дополнительными узлами: {len(relations_between_additional)}")
+        
+        for relation in relations_between_additional:
+            source_id = relation['source_id']
+            target_id = relation['target_id']
+            relation_type = relation['relation_type']
+            
+            edge_id = f"{source_id}-{target_id}"
+            if edge_id not in [e['id'] for e in edges]:
+                edge = {
+                    'id': edge_id,
+                    'from': source_id,
+                    'to': target_id,
+                    'label': relation_type,
+                    'title': f"Связь: {relation_type}",
+                    'color': '#666666'  # Приглушенный цвет для связей между дополнительными узлами
+                }
+                edges.append(edge)
+        
+        # Преобразуем словарь узлов в список
+        nodes_list = list(nodes.values())
+        
+        print(f"=== DEBUG: Итоговые результаты ===")
+        print(f"Узлов создано: {len(nodes_list)}")
+        print(f"Связей создано: {len(edges)}")
+        print(f"Узлы 'Счетное': {len([n for n in nodes_list if n['group'] == 'Счетное'])}")
+        print(f"Дополнительные узлы: {len([n for n in nodes_list if n['group'] != 'Счетное'])}")
+        
+        # Выводим статистику по группам
+        groups = {}
+        for node in nodes_list:
+            group = node['group']
+            groups[group] = groups.get(group, 0) + 1
+        print(f"Статистика по группам: {groups}")
         
         return jsonify({
-            'success': False,
-            'error': f'Внутренняя ошибка сервера: {str(e)}',
-            'graph_json': None
-        }), 500
+            'nodes': nodes_list,
+            'edges': edges,
+            'color_mapping': label_colors,
+            'metadata': extended_data.get('metadata', {})
+        })
+    
+    except Exception as e:
+        print(f"Ошибка при получении данных графа: {str(e)}")
+        return jsonify({'error': f'Ошибка при получении данных графа: {str(e)}'})
+    
+    finally:
+        # Закрываем соединение
+        query_handler.disconnect()
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """Проверка работоспособности API"""
-    return jsonify({
-        'status': 'ok',
-        'message': 'Flask приложение работает'
-    })
-
-@app.errorhandler(404)
-def not_found(error):
-    """Обработчик 404 ошибки"""
-    return jsonify({
-        'success': False,
-        'error': 'Страница не найдена'
-    }), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    """Обработчик 500 ошибки"""
-    return jsonify({
-        'success': False,
-        'error': 'Внутренняя ошибка сервера'
-    }), 500
+@app.teardown_appcontext
+def close_db(error):
+    """Закрытие соединения с Neo4j при завершении контекста приложения"""
+    global visualizer
+    if visualizer:
+        visualizer.disconnect()
+        visualizer = None
 
 if __name__ == '__main__':
-    # Проверяем наличие необходимых файлов
-    required_files = ['russia_regions.parquet', 'map_figure.py']
-    missing_files = []
-    
-    for file in required_files:
-        if not os.path.exists(file):
-            missing_files.append(file)
-    
-    if missing_files:
-        logger.warning(f"Отсутствуют файлы: {', '.join(missing_files)}")
-    
-    # Проверяем наличие директорий с данными
-    data_dirs = ["2022", "2023", "2024"]
-    missing_dirs = []
-    
-    for data_dir in data_dirs:
-        if not os.path.exists(data_dir):
-            missing_dirs.append(data_dir)
-    
-    if missing_dirs:
-        logger.warning(f"Отсутствуют директории с данными: {', '.join(missing_dirs)}")
-    else:
-        logger.info(f"Найдены директории с данными: {', '.join(data_dirs)}")
-    
-    logger.info("Запуск Flask приложения...")
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    app.run(debug=False, host='127.0.0.1', port=5001)

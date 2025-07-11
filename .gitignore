@@ -1,22 +1,14 @@
-Таблицы_исходники
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-*.pyw
-*.pyz
-excel_processor.py
-/venv
-/БД
+/Users/sergejkocemirov/stat_forms/БД
+/Users/sergejkocemirov/stat_forms/Таблицы_исходники
 БД
-
-# Telegram bot files
+Таблицы_исходники
+БД
+/БД
+БД/2016
+БД/2017
 .env
 bot.log
-*.log
-
-# IDE files
-.vscode/
-.idea/
-БД/
-
+.env.example
+venv
+__pycache__
+neo4j_config.json

@@ -31,7 +31,7 @@ class Neo4jNodeCreator:
         """
         self.config = self._load_neo4j_config(config_path)
         self.driver = None
-        self.years = ["2021", "2022", "2023", "2024"]
+        self.years = ["2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024"]
         
     def _load_neo4j_config(self, config_path: str) -> Dict[str, str]:
         """
@@ -173,6 +173,132 @@ class Neo4jNodeCreator:
             
         except (ValueError, TypeError):
             return None
+    def extract_period_config(self, node_config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """
+        Извлекает конфигурацию параметров для разных периодов из конфигурации узла.
+        
+        Args:
+            node_config (Dict[str, Any]): Конфигурация узла
+        
+        Returns:
+            Dict[str, Dict[str, Any]]: Словарь с конфигурациями для каждого периода
+        """
+        periods_config = {}
+        
+        # Проверяем новый формат с отдельными блоками периодов
+        if "period_2016_2020" in node_config:
+            periods_config["2016_2020"] = node_config["period_2016_2020"]
+        
+        if "period_2021_2024" in node_config:
+            periods_config["2021_2024"] = node_config["period_2021_2024"]
+        
+        # Обратная совместимость: если есть старые поля, используем их для периода 2021-2024
+        if not periods_config and all(key in node_config for key in ["table_number", "column", "row"]):
+            periods_config["2021_2024"] = {
+                "table_number": node_config["table_number"],
+                "column": node_config["column"],
+                "row": node_config["row"]
+            }
+            print("Используется обратная совместимость: старые поля применены к периоду 2021-2024")
+        
+        return periods_config
+    
+    def collect_federal_data_by_periods(self, periods_config: Dict[str, Dict[str, Any]]) -> List[Optional[float]]:
+        """
+        Собирает федеральные данные за все годы с учетом разных параметров для разных периодов.
+        
+        Args:
+            periods_config (Dict[str, Dict[str, Any]]): Конфигурация параметров для периодов
+        
+        Returns:
+            List[Optional[float]]: Список значений по годам (None для отсутствующих данных)
+        """
+        federal_values = []
+        
+        for year in self.years:
+            # Определяем к какому периоду относится год
+            if year in ["2016", "2017", "2018", "2019", "2020"]:
+                period_key = "2016_2020"
+            else:
+                period_key = "2021_2024"
+            
+            # Проверяем есть ли конфигурация для этого периода
+            if period_key not in periods_config:
+                print(f"Конфигурация для периода {period_key} не найдена, пропускаем год {year}")
+                federal_values.append(None)
+                continue
+            
+            period_config = periods_config[period_key]
+            table_number = str(period_config["table_number"])
+            column_number = period_config["column"]
+            row_number = period_config["row"]
+            
+            file_path = self.get_federal_file_path(year, table_number)
+            
+            if os.path.exists(file_path):
+                cell_value = self.get_cell_value(file_path, column_number, row_number)
+                
+                if cell_value is not None:
+                    numeric_value = self.validate_numeric_value(cell_value)
+                    federal_values.append(numeric_value)
+                else:
+                    federal_values.append(None)
+            else:
+                print(f"Федеральный файл не найден: {file_path}")
+                federal_values.append(None)
+        
+        return federal_values
+    
+    def collect_regional_data_by_periods(self, periods_config: Dict[str, Dict[str, Any]]) -> Tuple[List[str], List[List[Optional[float]]]]:
+        """
+        Собирает региональные данные по всем регионам и годам с учетом разных параметров для разных периодов.
+        
+        Args:
+            periods_config (Dict[str, Dict[str, Any]]): Конфигурация параметров для периодов
+        
+        Returns:
+            Tuple[List[str], List[List[Optional[float]]]]: Кортеж (список регионов, список значений по годам для каждого региона)
+        """
+        regions = self.get_regions_list()
+        regional_values = []
+        
+        for region in regions:
+            region_values = []
+            
+            for year in self.years:
+                # Определяем к какому периоду относится год
+                if year in ["2016", "2017", "2018", "2019", "2020"]:
+                    period_key = "2016_2020"
+                else:
+                    period_key = "2021_2024"
+                
+                # Проверяем есть ли конфигурация для этого периода
+                if period_key not in periods_config:
+                    region_values.append(None)
+                    continue
+                
+                period_config = periods_config[period_key]
+                table_number = str(period_config["table_number"])
+                column_number = period_config["column"]
+                row_number = period_config["row"]
+                
+                file_path = self.get_regional_file_path(year, region, table_number)
+                
+                if os.path.exists(file_path):
+                    cell_value = self.get_cell_value(file_path, column_number, row_number)
+                    
+                    if cell_value is not None:
+                        numeric_value = self.validate_numeric_value(cell_value)
+                        region_values.append(numeric_value)
+                    else:
+                        region_values.append(None)
+                else:
+                    region_values.append(None)
+            
+            regional_values.append(region_values)
+            print(f"Регион {region}: {region_values}")
+        
+        return regions, regional_values
     
     def collect_federal_data(self, table_number: str, column_number: int, row_number: int) -> List[Optional[float]]:
         """
@@ -275,21 +401,29 @@ class Neo4jNodeCreator:
             Optional[str]: ID созданного узла или None при ошибке
         """
         try:
-            # Извлекаем параметры из конфигурации
+            # Извлекаем обязательные параметры из конфигурации
             node_name = node_config["node_name"]
             node_label = node_config["node_label"]
-            table_number = str(node_config["table_number"])
-            column_number = node_config["column"]
-            row_number = node_config["row"]
             
-            print(f"Создание узла '{node_name}' для таблицы {table_number}, колонка {column_number}, строка {row_number}")
+            # Извлекаем дополнительные параметры
+            full_name = node_config.get("full_name", node_name)  # Полное название узла
+            additional_properties = node_config.get("properties", {})  # Дополнительные свойства
             
-            # Собираем федеральные данные
-            federal_values = self.collect_federal_data(table_number, column_number, row_number)
+            # Извлекаем конфигурацию периодов
+            periods_config = self.extract_period_config(node_config)
+            
+            if not periods_config:
+                print(f"Не найдена конфигурация периодов для узла '{node_name}'")
+                return None
+            
+            print(f"Создание узла '{node_name}' (полное название: '{full_name}') с конфигурацией периодов: {list(periods_config.keys())}")
+            
+            # Собираем федеральные данные с учетом периодов
+            federal_values = self.collect_federal_data_by_periods(periods_config)
             print(f"Федеральные данные: {federal_values}")
             
-            # Собираем региональные данные
-            regions, regional_values = self.collect_regional_data(table_number, column_number, row_number)
+            # Собираем региональные данные с учетом периодов
+            regions, regional_values = self.collect_regional_data_by_periods(periods_config)
             print(f"Региональные данные собраны для {len(regions)} регионов")
             
             # Создаем основной узел в Neo4j (без региональных данных)
@@ -300,26 +434,29 @@ class Neo4jNodeCreator:
                 else:
                     labels_str = node_label
                 
+                # Подготавливаем базовые свойства узла
+                base_properties = {
+                    "name": node_name,
+                    "полное_название": full_name,
+                    "years": self.years,
+                    "federal_values": federal_values,
+                    "periods_config_json": json.dumps(periods_config, ensure_ascii=False)
+                }
+                
+                # Добавляем дополнительные свойства
+                all_properties = {**base_properties, **additional_properties}
+                
+                # Формируем строку свойств для Cypher запроса
+                properties_str = ", ".join([f"{key}: ${key}" for key in all_properties.keys()])
+                
                 query = f"""
                 CREATE (n:{labels_str} {{
-                    name: $name,
-                    years: $years,
-                    federal_values: $federal_values,
-                    table_number: $table_number,
-                    column: $column,
-                    row: $row
+                    {properties_str}
                 }})
                 RETURN elementId(n) as node_id
                 """
                 
-                result = session.run(query, {
-                    "name": node_name,
-                    "years": self.years,
-                    "federal_values": federal_values,
-                    "table_number": table_number,
-                    "column": column_number,
-                    "row": row_number
-                })
+                result = session.run(query, all_properties)
                 
                 record = result.single()
                 if record:
@@ -336,6 +473,7 @@ class Neo4jNodeCreator:
                     return None
                     
         except Exception as e:
+            node_name = node_config.get("node_name", "Unknown")
             print(f"Ошибка при создании узла '{node_name}': {str(e)}")
             return None
     
@@ -411,8 +549,10 @@ class Neo4jNodeCreator:
                     year_values = {}
                     for j, year in enumerate(self.years):
                         if j < len(region_data):
+                            # Записываем все значения, включая None (будут сохранены как NULL в Neo4j)
                             year_values[f"value_{year}"] = region_data[j]
                         else:
+                            # Если данных нет, записываем None
                             year_values[f"value_{year}"] = None
                     
                     # Создаем связь с данными по годам в свойствах
@@ -443,7 +583,8 @@ class Neo4jNodeCreator:
                 query = f"""
                 MATCH (from_node), (to_node)
                 WHERE elementId(from_node) = $from_id AND elementId(to_node) = $to_id
-                CREATE (from_node)-[r:{relationship_type} $properties]->(to_node)
+                CREATE (from_node)-[r:{relationship_type}]->(to_node)
+                SET r += $properties
                 RETURN r
                 """
                 

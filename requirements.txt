@@ -1,15 +1,40 @@
+# Основные зависимости для анализа данных
 pandas==2.2.3
 openpyxl==3.1.5
-numpy==2.2.4
+numpy<2.0
 tabulate
+
+# Telegram бот
 aiogram==3.13.1
+
+# Конфигурация и переменные окружения
 python-dotenv==1.0.0
+
+# Геоданные и визуализация
 geopandas
 shapely
 plotly
 pyarrow
+
+# Обработка текста и поиск
 fuzzywuzzy
 python-Levenshtein
+
+# Веб-сервер
 Flask==3.0.0
+
+# База данных Neo4j
 neo4j==5.15.0
 
+# LangChain для LLM
+langchain-openai
+langchain-core
+
+# Поиск в интернете
+tavily-python
+
+# Валидация данных
+pydantic
+
+# Системные утилиты для координатора
+psutil

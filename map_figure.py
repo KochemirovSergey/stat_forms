@@ -36,7 +36,10 @@ class mapFigure(go.Figure):
                                       fill='toself',
                                       line_width=1,
                                       fillcolor='lightblue',
-                                      showlegend=False
+                                      showlegend=False,
+                                      mode='lines',
+                                      # Делаем регионы кликабельными
+                                      customdata=[r.region]
             ))
         
         # не отображать оси, уравнять масштаб по осям
@@ -45,5 +48,5 @@ class mapFigure(go.Figure):
 
         # чтобы покрасивее вписывалась карта на поверхности фигуры
         self.update_layout(showlegend=False, dragmode='pan',
-                           width=800, height=450, 
-                           margin={'l': 10, 'b': 10, 't': 10, 'r': 10})
+                           autosize=True,
+                           margin={'l': 10, 'b': 10, 't': 50, 'r': 10})
